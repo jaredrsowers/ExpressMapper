@@ -13,12 +13,14 @@ namespace ExpressMapper
 
         #endregion
 
-        public DestinationTypeMapper(IMappingService service, IMappingServiceProvider serviceProvider) : base(service, serviceProvider){}
+        public DestinationTypeMapper(IMappingService service, IMappingServiceProvider serviceProvider) : base(service, serviceProvider) { }
+
+        public override CompilationTypes MapperType => CompilationTypes.Destination;
 
         protected override void InitializeRecursiveMappings(IMappingServiceProvider serviceProvider)
         {
             var mapMethod =
-                typeof(IMappingServiceProvider).GetMethods()
+                typeof(IMappingServiceProvider).GetInfo().GetMethods()
                     .First(mi => mi.Name == MapStr && mi.GetParameters().Length == 2)
                     .MakeGenericMethod(typeof(T), typeof(TN));
 
@@ -33,6 +35,7 @@ namespace ExpressMapper
 
             ProcessCustomMembers();
             ProcessCustomFunctionMembers();
+            ProcessFlattenedMembers();
             ProcessAutoProperties();
 
             var expressions = new List<Expression>();

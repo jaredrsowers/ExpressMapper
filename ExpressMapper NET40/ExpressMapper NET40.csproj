@@ -57,11 +57,13 @@
     <Compile Include="DefaultMappingContext.cs" />
     <Compile Include="DelegateCustomTypeMapper.cs" />
     <Compile Include="DestinationTypeMapper.cs" />
+    <Compile Include="ExpressmapperException.cs" />
     <Compile Include="ExpressmapperExtensions.cs" />
+    <Compile Include="FlattenMemberInfo.cs" />
+    <Compile Include="FlattenMapper.cs" />
     <Compile Include="IMappingContext.cs" />
     <Compile Include="IMappingServiceProvider.cs" />
-    <Compile Include="Ioc\DependencyResolver.cs" />
-    <Compile Include="Ioc\IContainer.cs" />
+    <Compile Include="FlattenLinqMethod.cs" />
     <Compile Include="MapNotImplemented.cs" />
     <Compile Include="MappingServiceProvider.cs">
       <SubType>Code</SubType>
@@ -85,6 +87,7 @@
     <Compile Include="Mapper.cs" />
     <Compile Include="MemberConfiguration.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TypeExtensions.cs" />
     <Compile Include="TypeMapperBase.cs" />
   </ItemGroup>
   <ItemGroup>

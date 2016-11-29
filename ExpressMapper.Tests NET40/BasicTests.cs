@@ -8,14 +8,33 @@ using ExpressMapper.Tests.Model.ViewModels.Structs;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Moq;
 
 namespace ExpressMapper.Tests
 {
     [TestFixture]
     public class BasicTests : BaseTestClass
     {
+        [Test]
+        public void EnumToAnotherEnumMapTest()
+        {
+            Mapper.Register<UnitOfWork, UnitOfWorkViewModel>();
+            Mapper.Compile();
+
+            var unitOfWork = new UnitOfWork
+            {
+                Id = Guid.NewGuid(),
+                State = States.InProgress
+            };
+
+            var unitOfWorkViewModel = unitOfWork.Map<UnitOfWork, UnitOfWorkViewModel>();
+            Assert.AreEqual((int)unitOfWork.State, (int)unitOfWorkViewModel.State);
+            Assert.AreEqual(unitOfWork.Id, unitOfWorkViewModel.Id);
+        }
+
         [Test]
         public void ParallelPrecompileCollectionTest()
         {
@@ -32,6 +51,32 @@ namespace ExpressMapper.Tests
             }
 
             Parallel.Invoke(actions.ToArray());
+        }
+
+        [Test]
+        public void DefaultPrimitiveTypePropertyToStringTest()
+        {
+            Mapper.Register<TestDefaultDecimal, TestDefaultDecimalToStringViewModel>()
+                .Member(dest => dest.TestString, src => src.TestDecimal);
+            Mapper.RegisterCustom<decimal, string>(src => src.ToString("#0.00", CultureInfo.InvariantCulture));
+            Mapper.Compile();
+            var test = new TestDefaultDecimal() { TestDecimal = default(decimal) };
+            test.TestDecimal = default(decimal);
+            var result = Mapper.Map<TestDefaultDecimal, TestDefaultDecimalToStringViewModel>(test);
+            //This is where the mapping fails
+            Assert.AreEqual(result.TestString, "0.00");
+        }
+
+        [Test]
+        public void MemberMappingsHasHigherPriorityThanCaseSensetiveTest()
+        {
+            Mapper.Register<Source, TargetViewModel>()
+                .Member(t => t.Enabled, s => s.enabled == "Y");
+            Mapper.Compile();
+
+           var source = new Source { enabled = "N" };
+           var result = Mapper.Map<Source, TargetViewModel>(source);
+           Assert.AreEqual(result.Enabled, false);
         }
 
         [Test]
@@ -328,6 +373,23 @@ namespace ExpressMapper.Tests
         }
 
         [Test]
+        public void InstantiateFuncMap()
+        {
+            Mapper.Register<Size, SizeViewModel>()
+                .InstantiateFunc(src =>
+                {
+                    return new SizeViewModel(s => string.Format("{0} - Full name - {1}", src.Id, s));
+                });
+            Mapper.Compile();
+
+            var sizeResult = Functional.InstantiateMap();
+
+            var result = Mapper.Map<Size, SizeViewModel>(sizeResult.Key);
+
+            Assert.AreEqual(result, sizeResult.Value);
+        }
+
+        [Test]
         public void IgnoreMap()
         {
             Mapper.Register<Size, SizeViewModel>()
@@ -353,14 +415,13 @@ namespace ExpressMapper.Tests
         }
 
         [Test]
-        [ExpectedException(typeof(InvalidOperationException), ExpectedMessage = "BeforeMap already registered for ExpressMapper.Tests.Model.Models.Size")]
         public void BeforeMapDuplicateTest()
         {
-            Mapper.Register<Size, SizeViewModel>()
+            var exception = Assert.Throws<InvalidOperationException>(() => Mapper.Register<Size, SizeViewModel>()
                 .Before((src, dest) => dest.Name = src.Name)
                 .Before((src, dest) => dest.Name = src.Name)
-                .Ignore(dest => dest.Name);
-            Mapper.Compile();
+                .Ignore(dest => dest.Name));
+            Assert.That(exception.Message, Is.EqualTo("BeforeMap already registered for ExpressMapper.Tests.Model.Models.Size"));
 
             var sizeResult = Functional.BeforeMap();
             var result = Mapper.Map<Size, SizeViewModel>(sizeResult.Key);
@@ -379,13 +440,12 @@ namespace ExpressMapper.Tests
         }
 
         [Test]
-        [ExpectedException(typeof(InvalidOperationException), ExpectedMessage = "AfterMap already registered for ExpressMapper.Tests.Model.Models.Size")]
         public void AfterMapDuplicateTest()
         {
-            Mapper.Register<Size, SizeViewModel>()
+            var exception = Assert.Throws<InvalidOperationException>(() => Mapper.Register<Size, SizeViewModel>()
                 .After((src, dest) => dest.Name = "OVERRIDE BY AFTER MAP")
-                .After((src, dest) => dest.Name = "Duplicate map");
-            Mapper.Compile();
+                .After((src, dest) => dest.Name = "Duplicate map"));
+            Assert.That(exception.Message, Is.EqualTo("AfterMap already registered for ExpressMapper.Tests.Model.Models.Size"));
             var sizeResult = Functional.AfterMap();
             var result = Mapper.Map<Size, SizeViewModel>(sizeResult.Key);
             Assert.AreEqual(result, sizeResult.Value);
@@ -1108,6 +1168,88 @@ namespace ExpressMapper.Tests
         }
 
         [Test]
+        public void MemberCaseInSensitivityDefaultMapTest()
+        {
+            Mapper.Register<TypoCase, TypoCaseViewModel>();
+            Mapper.Compile();
+
+            var typoCase = new TypoCase
+            {
+                id = Guid.NewGuid(),
+                NaME = "Test name!",
+                TestId = 5
+            };
+
+            var typoCaseViewModel = Mapper.Map<TypoCase, TypoCaseViewModel>(typoCase);
+            Assert.AreEqual(typoCase.id, typoCaseViewModel.Id);
+            Assert.AreEqual(typoCase.NaME, typoCaseViewModel.Name);
+            Assert.AreEqual(typoCase.TestId, typoCaseViewModel.TestId);
+        }
+
+        [Test]
+        public void MemberCaseSensitivityGlobalMapTest()
+        {
+            Mapper.MemberCaseSensitiveMap(true);
+            Mapper.Register<TypoCase, TypoCaseViewModel>();
+            Mapper.Compile();
+
+            var typoCase = new TypoCase
+            {
+                id = Guid.NewGuid(),
+                NaME = "Test name!",
+                TestId = 5
+            };
+
+            var typoCaseViewModel = Mapper.Map<TypoCase, TypoCaseViewModel>(typoCase);
+            
+            Assert.AreEqual(typoCaseViewModel.Id, Guid.Empty);
+            Assert.AreEqual(typoCaseViewModel.Name, null);
+            Assert.AreEqual(typoCase.TestId, typoCaseViewModel.TestId);
+        }
+
+        [Test]
+        public void MemberCaseSensitivityLocalMapTest()
+        {
+            Mapper.Register<TypoCase, TypoCaseViewModel>()
+                .CaseSensitive(true);
+            Mapper.Compile();
+
+            var typoCase = new TypoCase
+            {
+                id = Guid.NewGuid(),
+                NaME = "Test name!",
+                TestId = 5
+            };
+
+            var typoCaseViewModel = Mapper.Map<TypoCase, TypoCaseViewModel>(typoCase);
+
+            Assert.AreEqual(typoCaseViewModel.Id, Guid.Empty);
+            Assert.AreEqual(typoCaseViewModel.Name, null);
+            Assert.AreEqual(typoCase.TestId, typoCaseViewModel.TestId);
+        }
+
+        [Test]
+        public void MemberCaseInSensitivityGlobalOverrideMapTest()
+        {
+            Mapper.MemberCaseSensitiveMap(true);
+            Mapper.Register<TypoCase, TypoCaseViewModel>()
+                .CaseSensitive(false);
+            Mapper.Compile();
+
+            var typoCase = new TypoCase
+            {
+                id = Guid.NewGuid(),
+                NaME = "Test name!",
+                TestId = 5
+            };
+
+            var typoCaseViewModel = Mapper.Map<TypoCase, TypoCaseViewModel>(typoCase);
+            Assert.AreEqual(typoCase.id, typoCaseViewModel.Id);
+            Assert.AreEqual(typoCase.NaME, typoCaseViewModel.Name);
+            Assert.AreEqual(typoCase.TestId, typoCaseViewModel.TestId);
+        }
+
+        [Test]
         public void InheritanceFuncMap()
         {
             Mapper.Register<Contact, ContactViewModel>();
@@ -1159,6 +1301,63 @@ namespace ExpressMapper.Tests
             }
 
             return destination;
+        }
+
+        [Test]
+        public void ClearErrorDuringDynamicMappingTest()
+        {
+            var ticket = new Ticket
+            {
+                Id = Guid.NewGuid(),
+                Name = "Ticket",
+                Venue = new Venue
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Venue"
+                }
+            };
+
+
+            Assert.Throws<ExpressmapperException>(() =>
+            {
+                Mapper.Map<Ticket, TicketViewModel>(ticket);
+            });
+        }
+
+        [Test]
+        public void ClearErrorDuringCompileTimeTest()
+        {
+            Mapper.Register<Ticket, TicketViewModel>();
+
+            Assert.Throws<ExpressmapperException>(Mapper.Compile);
+        }
+
+        [Test]
+        public void MapExistsTest()
+        {
+            Mapper.Register<Father, FlattenFatherSonGrandsonDto>();
+
+            Assert.True(Mapper.MapExists(typeof(Father), typeof(FlattenFatherSonGrandsonDto)));
+            Assert.False(Mapper.MapExists(typeof(FlattenFatherSonGrandsonDto), typeof(Father)));
+        }
+
+        [Test]
+        public void DoNotUpdateUnchangedPropertyValuesTest()
+        {
+            var srcBrand = new Brand
+            {
+                Id = Guid.NewGuid(),
+                Name = "brand"
+            };
+
+            var existingBrandMock = new Mock<Brand>().SetupAllProperties();
+            existingBrandMock.Object.Name = "brand";
+
+            var destBrand = Mapper.Map(srcBrand, existingBrandMock.Object);
+            existingBrandMock.VerifySet(x => x.Name = It.IsAny<string>(), Times.Once());
+
+            Assert.AreEqual(destBrand.Id, srcBrand.Id);
+            Assert.AreEqual(destBrand.Name, srcBrand.Name);
         }
     }
 }
